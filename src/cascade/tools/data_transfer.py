@@ -22,7 +22,7 @@ class DataTransfer:
         except json.JSONDecodeError as e:
             raise ValueError(f"Ошибка парсинга JSON: {e}")
     
-    def transfer_data(self, local_path: str, remote_path: str, server_name: str, mode: str):
+    def transfer_data(self, local_path: str, remote_path: str, server_name: str, mode: str, username: str):
         """Copy data for scp.
         
         Parameters
@@ -35,6 +35,8 @@ class DataTransfer:
             Server name from configs/servers.json
         mode: str
             Copy or download
+        username: str
+            User on remote server
         """
         try:
             if not Path(local_path).exists():
@@ -49,9 +51,6 @@ class DataTransfer:
             
             if not server_ip:
                 raise ValueError(f"Для сервера '{server_name}' не указан IP-адрес")
-            
-            username = getpass.getuser()
-
 
             if mode == 'copy':
                 scp_command = [
@@ -76,7 +75,7 @@ class DataTransfer:
                 check=True, 
                 capture_output=True, 
                 text=True,
-                timeout=300
+                timeout=300000
             )
             
             print("✓ Копирование завершено успешно")

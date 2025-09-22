@@ -9,7 +9,7 @@ from src.cascade.tools.data_transfer import DataTransfer
 
 def transfer(opts: DictConfig):
     transfer = DataTransfer(opts.server_conf)
-    transfer.transfer_data(opts.local_path, opts.remote_path, opts.server_name, opts.mode)
+    transfer.transfer_data(opts.local_path, opts.remote_path, opts.server_name, opts.mode, opts.username)
 
 if __name__ == "__main__":
     parser = get_parser()
