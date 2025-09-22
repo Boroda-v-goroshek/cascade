@@ -1,0 +1,5 @@
+server_conf: configs/servers.json
+local_path: None
+remote_path: None
+server_name: None
+mode: None
