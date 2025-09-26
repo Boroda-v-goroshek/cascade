@@ -1,6 +1,6 @@
 server_conf: configs/servers.json
-local_path: /mnt/c/Users/Curob/for_cvat/building_machines_winter_jobs_cleaned
-remote_path: /hdd1/shestakov/for_enot
+local_path: /mnt/c/Users/Curob/Downloads/from_cvat
+remote_path: /hdd1/shestakov/from_cvat
 server_name: cube09_global
 mode: copy
 username: shestakov
