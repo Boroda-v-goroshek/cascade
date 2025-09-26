@@ -1,0 +1,9 @@
+search_queries: [
+  "alexander nevsky cathedral drone footage",
+  "drone footage cars",
+  "Аэросъемка с дрона поля"
+  ]
+keywords: ["дрон", "drone", "аэросъемка", "drone footage", "aerial", "top view", "dji", "аэрофотосъемка"]
+output_path: data/yotube
+max_videos: 50
+quality: 'best'

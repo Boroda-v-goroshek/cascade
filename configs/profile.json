@@ -1,0 +1,7 @@
+{
+    "server": "95.156.205.198",
+    "server_port": 8443,
+    "local_port": 1080,
+    "password": "ZI5NxxOuBQaqtAoy8wySaE",
+    "method": "chacha20-ietf-poly1305"
+}
