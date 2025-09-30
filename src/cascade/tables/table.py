@@ -44,7 +44,7 @@ class TableEditor():
             return pd.DataFrame()
 
 
-    def append_data(self, data: pd.DataFrame | list, worksheet_name: int=0, include_headers: bool=False):
+    def append_to_end(self, data: pd.DataFrame | list, worksheet_name: int=0, include_headers: bool=False):
         """Append data into the end of table.
         
         Parameters
@@ -68,3 +68,35 @@ class TableEditor():
         
         worksheet.append_rows(values)
         print(f"✅ Добавлено {len(values)} строк в конец листа '{worksheet.title}'")
+        
+    def append_to_range(self, data: pd.DataFrame | list, range_str: str, worksheet_name: int = 0):
+        """
+        Добавить данные в определенный диапазон
+        
+        Parameters
+        ----------
+        data: DataFrame | list
+            Данные для записи (должны соответствовать размеру диапазона)
+        range_str: str
+            Диапазон в формате 'A1:B10', 'G2:G197' и т.д.
+        worksheet_name: int
+            Индекс листа
+        """
+        worksheet = self.sheet.get_worksheet(worksheet_name)
+        
+        try:
+            if isinstance(data, pd.DataFrame):
+                values = data.values.tolist()
+            else:
+                values = data
+            
+            if values and not isinstance(values[0], list):
+                values = [[item] for item in values]
+            
+            worksheet.update(range_str, values)
+            
+            print(f"✅ Данные записаны в диапазон '{range_str}' на листе '{worksheet.title}'")
+            print(f"📊 Записано {len(values)} значений")
+            
+        except Exception as e:
+            print(f"❌ Ошибка записи в диапазон: {e}")
