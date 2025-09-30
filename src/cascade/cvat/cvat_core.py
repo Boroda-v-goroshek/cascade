@@ -1,175 +1,187 @@
 import yaml
+import time
 
-from pathlib import Path
-from cvat_sdk import make_client
-from cvat_sdk.core.proxies.tasks import ResourceType
+import requests
 
 
-def get_cvat_data(path_to_yml: str) -> tuple[str, str, str, str]:
+def get_cvat_data(path_to_yml: str) -> tuple[str, str, str]:
     if path_to_yml:
         with open(path_to_yml, "r", encoding="utf-8") as file:
             args = yaml.safe_load(file)
+    else:
+        raise ValueError("path_to_yml is empty or invalid")
         
     server_url = args["server_url"]
     username = args["username"]
     password = args["password"]
-    project_name = args["project_name"]
 
-    return server_url, username, password, project_name
+    return server_url, username, password
 
 
-def upload_archives_to_cvat(
-    server_url: str,
-    username: str,
-    password: str,
-    project_name: str,
-    archive_names: list[str],
-    archives_dir: Path | str
-):
-    """Download data to CVAT like once job.
+def upload_from_share_folders(directory_names: list[str], credentials, project_id, start_share_path):
+    base_url = credentials["base_url"]
+    username = credentials["username"]
+    password = credentials["password"]
+
     
-    Parameters
-    ---------
-    server_url: str
-        URL for CVAT server
-    username: str
-        Login of user in CVAT
-    password: str
-        Password of user in CVAT
-    project_name: str
-        Target project
-    archive_names: list[str]
-        List of target archive names
-    archives_dir: Path | str
-        Path to directory with archives
-    """
+    session = requests.Session()
     
-    with make_client(server_url, credentials=(username, password)) as client:
-        projects = client.projects.list()
-        target_project = None
+    print("Начинаем загрузку данных из CVAT share...")
+    print("=" * 60)
+    
+    print("1. Аутентификация...")
+    try:
+        login_response = session.post(
+            f"{base_url}/api/auth/login",
+            json={"username": username, "password": password},
+            timeout=30
+        )
         
-        for project in projects:
-            if project.name == project_name:
-                target_project = project
-                break
+        if login_response.status_code != 200:
+            print(f"❌ Ошибка логина: {login_response.text}")
+            return []
         
-        if target_project is None:
-            raise ValueError(f"Project '{project_name}' does not exist!")
+        auth_data = login_response.json()
+        session.headers.update({"Authorization": f"Token {auth_data['key']}"})
+        print("Успешно...✅")
         
-        print(f"Find: {project_name} (ID: {target_project.id})")
-
-        archives_dir = Path(archives_dir) if isinstance(archives_dir, str) else archives_dir
+    except Exception as e:
+        print(f"❌ Ошибка при логине: {e}")
+        return []
+    
+    results = {}
+    
+    for dir_name in directory_names:
+        print(f"\nОбрабатываем директорию: {dir_name}")
+        print("-" * 40)
         
-        for archive_name in archive_names:
-            archive_path = archives_dir / archive_name
+        share_path = f"{start_share_path}/{dir_name}/obj_train_data"
+        
+        try:
+            task_payload = {
+                "name": dir_name,
+                "project_id": project_id
+            }
             
-            if not archive_path.exists():
-                print(f"WARNING: archive {archive_path} does not exist! Skipped this")
+            create_response = session.post(
+                f"{base_url}/api/tasks", 
+                json=task_payload,
+                timeout=30
+            )
+            
+            if create_response.status_code not in [200, 201]:
+                print(f"❌ Ошибка создания задачи: {create_response.text}")
+                results[dir_name] = f"ERROR: failed to create task - {create_response.status_code}"
                 continue
             
-            task_name = Path(archive_name).stem
+            task_data = create_response.json()
+            task_id = task_data['id']
+            print(f"Задача создана: {dir_name} (ID: {task_id})...✅")
             
-            try:
-                print(f"Task is creating: {task_name}")
-
-                task_spec = {
-                    'name': task_name,
-                    'project_id': target_project.id,
-                }
-                
-                task = client.tasks.create(task_spec)
-                
-                task.upload_data(
-                    resources=[str(archive_path)],
-                    resource_type=ResourceType.LOCAL
-                )
-                
-                print(f"Успешно создана задача '{task_name}' (ID: {task.id})")
-                
-            except Exception as e:
-                print(f"Ошибка при создании задачи {task_name}: {e}")
-
-
-def test_cvat_connection(server_url: str, server_port:int, username: str, password: str):
-    """
-    Проверяет подключение к CVAT и выводит базовую информацию
-    """
-    try:
-        print(f"Пытаюсь подключиться к {server_url}...")
-        
-        with make_client(host=server_url, port=server_port, credentials=(username, password)) as client:
-            print("✓ Успешное подключение!")
+            share_data = {
+                "server_files": [f"{share_path}/"],
+                "image_quality": 100,
+                "use_zip_chunks": False,
+                "sorting_method": "natural"
+            }
             
-            # Проверяем список проектов
-            projects = client.projects.list()
-            print(f"✓ Найдено проектов: {len(projects)}")
+            print(f"Загружаем данные из: {share_path}")
+            upload_response = session.post(
+                f"{base_url}/api/tasks/{task_id}/data",
+                json=share_data,
+                timeout=30
+            )
             
-            # Выводим названия проектов
-            if projects:
-                print("Список проектов:")
-                for project in projects:
-                    print(f"  - {project.name} (ID: {project.id})")
+            print(f"   Статус загрузки: {upload_response.status_code}")
+            
+            if upload_response.status_code in [200, 202]:
+                print("Запрос на загрузку принят...✅")
+                
+                task_status = wait_for_upload_completion(session, base_url, task_id, dir_name)
+                
+                if task_status == "Finished":
+                    results[dir_name] = f"SUCCESS: task {task_id}"
+                    print(f"{dir_name} - успешно...✅")
+                else:
+                    results[dir_name] = f"ERROR: upload failed - {task_status}"
+                    try:
+                        session.delete(f"{base_url}/api/tasks/{task_id}")
+                        print(f"Задача {task_id} удалена из-за ошибки")
+                    except:
+                        pass
             else:
-                print("  Проекты не найдены")
+                print(f"❌ Ошибка загрузки: {upload_response.text}")
+                results[dir_name] = f"ERROR: upload request failed - {upload_response.status_code}"
+                try:
+                    session.delete(f"{base_url}/api/tasks/{task_id}")
+                except:
+                    pass
+                
+        except Exception as e:
+            print(f"❌ Исключение при обработке {dir_name}: {e}")
+            results[dir_name] = f"ERROR: exception - {str(e)}"
+    
+    print("\n" + "=" * 60)
+    print("ИТОГИ ЗАГРУЗКИ:")
+    print("=" * 60)
+    
+    success_count = 0
+    for dir_name, status in results.items():
+        if "SUCCESS" in status:
+            print(f"✅ {dir_name}: {status}")
+            success_count += 1
+        else:
+            print(f"❌ {dir_name}: {status}")
+    
+    print(f"\nУспешно загружено: {success_count}/{len(directory_names)}")
+    return results
+
+
+def wait_for_upload_completion(session, base_url, task_id, dir_name, max_wait=300):
+    wait_interval = 5
+    elapsed_time = 0
+    
+    while elapsed_time < max_wait:
+        try:
+            status_response = session.get(
+                f"{base_url}/api/tasks/{task_id}/status",
+                timeout=10
+            )
             
-            # Проверяем список задач
-            tasks = client.tasks.list()
-            print(f"✓ Найдено задач: {len(tasks)}")
+            if status_response.status_code == 200:
+                status_data = status_response.json()
+                state = status_data.get("state", "")
+                message = status_data.get("message", "")
+                
+                if state == "Finished":
+                    return "Finished"
+                elif state == "Failed":
+                    print(f"   ❌ Ошибка загрузки: {message}")
+                    return f"Failed: {message}"
             
+        except Exception as e:
+            print(f"   ⚠ Ошибка проверки статуса: {e}")
+        
+        time.sleep(wait_interval)
+        elapsed_time += wait_interval
+    
+    return "Timeout"
+
+
+def check_share_access(session, base_url):
+    print("\nПроверка доступа к share...")
+    
+    try:
+        share_response = session.get(f"{base_url}/api/server/share")
+        
+        if share_response.status_code == 200:
+            share_info = share_response.json()
+            print("Доступ к share подтвержден...✅")
             return True
+        else:
+            print(f"⚠ Не удалось получить информацию о share: {share_response.status_code}")
+            return False
             
     except Exception as e:
-        print(f"✗ Ошибка подключения: {e}")
-        return False
-    
-
-import requests
-from urllib.parse import urljoin
-
-def find_cvat_endpoints(server_url: str, username: str, password: str):
-    print(f"Поиск рабочих endpoints CVAT на {server_url}...")
-    
-    # Возможные endpoints для разных версий CVAT
-    endpoints_to_try = [
-        "/api/auth/whoami",
-        "/auth/whoami", 
-        "/api/v1/auth/whoami",
-        "/api/v1/users/self",
-        "/api/users/self",
-        "/api/server/about",
-        "/api/about",
-        "/api/projects",
-        "/api/v1/projects",
-        "/api/tasks", 
-        "/api/v1/tasks"
-    ]
-    
-    working_endpoints = []
-    
-    for endpoint in endpoints_to_try:
-        full_url = urljoin(server_url, endpoint)
-        try:
-            response = requests.get(full_url, auth=(username, password), timeout=10)
-            if response.status_code == 200:
-                print(f"✓ РАБОТАЕТ: {endpoint}")
-                working_endpoints.append(endpoint)
-            else:
-                print(f"✗ {endpoint} - HTTP {response.status_code}")
-        except Exception as e:
-            print(f"✗ {endpoint} - ошибка: {e}")
-    
-    return working_endpoints
-
-# Проверим какие endpoints работают
-# working = find_cvat_endpoints("http://212.20.47.88:7555", "Boroda-v-goroshek", "RAlf2005")
-# print(f"\nРабочие endpoints: {working}")
-
-
-if __name__ == "__main__":
-    # Замените на ваши данные
-    CVAT_SERVER_URL = "http://212.20.47.88"
-    CVAT_SERVER_PORT = 7555
-    USERNAME = "Boroda-v-goroshek"
-    PASSWORD = "RAlf2005"
-    
-    test_cvat_connection(CVAT_SERVER_URL, CVAT_SERVER_PORT, USERNAME, PASSWORD)
+        print(f"⚠ Ошибка при проверке share: {e}")
+        return True
