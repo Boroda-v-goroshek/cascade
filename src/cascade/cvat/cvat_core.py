@@ -88,3 +88,88 @@ def upload_archives_to_cvat(
                 
             except Exception as e:
                 print(f"Ошибка при создании задачи {task_name}: {e}")
+
+
+def test_cvat_connection(server_url: str, server_port:int, username: str, password: str):
+    """
+    Проверяет подключение к CVAT и выводит базовую информацию
+    """
+    try:
+        print(f"Пытаюсь подключиться к {server_url}...")
+        
+        with make_client(host=server_url, port=server_port, credentials=(username, password)) as client:
+            print("✓ Успешное подключение!")
+            
+            # Проверяем список проектов
+            projects = client.projects.list()
+            print(f"✓ Найдено проектов: {len(projects)}")
+            
+            # Выводим названия проектов
+            if projects:
+                print("Список проектов:")
+                for project in projects:
+                    print(f"  - {project.name} (ID: {project.id})")
+            else:
+                print("  Проекты не найдены")
+            
+            # Проверяем список задач
+            tasks = client.tasks.list()
+            print(f"✓ Найдено задач: {len(tasks)}")
+            
+            return True
+            
+    except Exception as e:
+        print(f"✗ Ошибка подключения: {e}")
+        return False
+    
+
+import requests
+from urllib.parse import urljoin
+
+def find_cvat_endpoints(server_url: str, username: str, password: str):
+    print(f"Поиск рабочих endpoints CVAT на {server_url}...")
+    
+    # Возможные endpoints для разных версий CVAT
+    endpoints_to_try = [
+        "/api/auth/whoami",
+        "/auth/whoami", 
+        "/api/v1/auth/whoami",
+        "/api/v1/users/self",
+        "/api/users/self",
+        "/api/server/about",
+        "/api/about",
+        "/api/projects",
+        "/api/v1/projects",
+        "/api/tasks", 
+        "/api/v1/tasks"
+    ]
+    
+    working_endpoints = []
+    
+    for endpoint in endpoints_to_try:
+        full_url = urljoin(server_url, endpoint)
+        try:
+            response = requests.get(full_url, auth=(username, password), timeout=10)
+            if response.status_code == 200:
+                print(f"✓ РАБОТАЕТ: {endpoint}")
+                working_endpoints.append(endpoint)
+            else:
+                print(f"✗ {endpoint} - HTTP {response.status_code}")
+        except Exception as e:
+            print(f"✗ {endpoint} - ошибка: {e}")
+    
+    return working_endpoints
+
+# Проверим какие endpoints работают
+# working = find_cvat_endpoints("http://212.20.47.88:7555", "Boroda-v-goroshek", "RAlf2005")
+# print(f"\nРабочие endpoints: {working}")
+
+
+if __name__ == "__main__":
+    # Замените на ваши данные
+    CVAT_SERVER_URL = "http://212.20.47.88"
+    CVAT_SERVER_PORT = 7555
+    USERNAME = "Boroda-v-goroshek"
+    PASSWORD = "RAlf2005"
+    
+    test_cvat_connection(CVAT_SERVER_URL, CVAT_SERVER_PORT, USERNAME, PASSWORD)
