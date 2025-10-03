@@ -3,7 +3,7 @@ import yaml
 
 from jsonargparse import CLI
 
-from src.cascade.cvat.cvat_core import CvatCore
+from src.cascade.cvat.cvat_core import CvatUploader
 
 
 def get_data_names(path_data_names: str | None) -> list[str] | None:
@@ -34,16 +34,12 @@ def download_process(cvat_credentials_path: str, project_id: int, share_path: st
     cvat_credentials_path: str
     project_id: int
     share_path: str
-    path_data_names: str
+    path_data_names: str | None
     """
     
-    cvat_core = CvatCore(cvat_credentials_path)
+    cvat_core = CvatUploader(cvat_credentials_path)
     data_names = get_data_names(path_data_names)
-    
-    if data_names is not None:
-        cvat_core.upload_from_share_folders(directory_names=data_names, project_id=project_id, share_path=share_path)
-    else:
-        cvat_core.upload_from_share_folders_all(project_id=project_id, share_path=share_path)
+    cvat_core.upload_from_share_folders(directory_names=data_names, project_id=project_id, share_path=share_path)
 
 
 def main(args_path: str | Path):
