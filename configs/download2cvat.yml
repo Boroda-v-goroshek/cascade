@@ -1,7 +1,0 @@
-path_to_cvat_yml: private/cvat.yml
-project_id: 35
-start_share_path: shestakov/data_for_cvat
-
-table_url: https://docs.google.com/spreadsheets/d/1m3h7iB04HSI9Fu7PzgyVDtt55xkxcn51a_dgr9s7ZMw/edit?usp=sharing
-table_credentials_path: private/credentials.json
-path_to_data: /hdd_first/shestakov/data_for_cvat

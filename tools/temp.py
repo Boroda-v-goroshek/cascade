@@ -3,21 +3,21 @@ import yaml
 
 from jsonargparse import CLI
 
-from cascade.cvat.cvat_core import upload_from_share_folders
-from cascade.cvat.cvat_core import get_cvat_data
+from src.cascade.cvat.cvat_core import upload_from_share_folders
+from src.cascade.cvat.cvat_core import get_cvat_data
 from tools.parse_fsra_table import get_archive_numbers, get_archive_names_for_numbers
 
 
-def main(args_path):
+def main(args_path: str | Path):
     if args_path:
         with open(args_path, "r", encoding="utf-8") as file:
             args = yaml.safe_load(file)
     else:
         raise ValueError("args_path is empty or invalid")
     
-    path_to_cvat_yml = args["path_to_cvat_yml"]
+    cvat_credentials_path = args["cvat_credentials_path"]
     project_id = args["project_id"]
-    start_share_path = args["start_share_path"]
+    share_path = args["share_path"]
 
     table_url = args["table_url"]
     table_credentials_path = args["table_credentials_path"]

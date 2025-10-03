@@ -1,0 +1,5 @@
+table_url: https://docs.google.com/spreadsheets/d/1m3h7iB04HSI9Fu7PzgyVDtt55xkxcn51a_dgr9s7ZMw/edit?usp=sharing
+main_table_url: https://docs.google.com/spreadsheets/d/15bKXNUphGce9wvCLj0upnaHOG4Fuu25FzoUVlw12OWQ/edit?usp=sharing
+sheet_name: fsra
+credentials_path: private/credentials.json
+path_to_archives: /mnt/cvat_share/shestakov/archives_for_cvat

@@ -1,0 +1,8 @@
+cvat_credentials_path: private/cvat.yml
+project_id: 9
+share_path: shestakov/test_data
+path_to_data_names: data/data_names.txt
+
+
+#table_url: https://docs.google.com/spreadsheets/d/1m3h7iB04HSI9Fu7PzgyVDtt55xkxcn51a_dgr9s7ZMw/edit?usp=sharing
+#table_credentials_path: private/credentials.json
