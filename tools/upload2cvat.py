@@ -6,12 +6,12 @@ from jsonargparse import CLI
 from src.cascade.cvat.cvat_core import CvatUploader
 
 
-def get_data_names(path_data_names: str | None) -> list[str] | None:
+def get_data_names(path_data_names: str | Path | None) -> list[str] | None:
     """Get directory names from txt.
 
     Parameters
     ---------
-    path_data_names: str | None
+    path_data_names: str | Path | None
         Path to txt
         
     Returns
@@ -26,20 +26,24 @@ def get_data_names(path_data_names: str | None) -> list[str] | None:
     return None
 
 
-def download_process(cvat_credentials_path: str, project_id: int, share_path: str, path_data_names: str | None):
-    """Download data to CVAT.
+def process_of_upload(cvat_credentials_path: str, project_id: int, share_path: str, path_data_names: str | None):
+    """Upload data to CVAT.
 
     Parameters
     ----------
     cvat_credentials_path: str
+        Path to cvat private data (url, username, password)
     project_id: int
+        Number (ID) of target project
     share_path: str
+        Path on /mnt/cvat_share/
     path_data_names: str | None
+        Path to .txt-file with directory names you need
     """
     
-    cvat_core = CvatUploader(cvat_credentials_path)
+    cvat_uploader = CvatUploader(cvat_credentials_path)
     data_names = get_data_names(path_data_names)
-    cvat_core.upload_from_share_folders(directory_names=data_names, project_id=project_id, share_path=share_path)
+    cvat_uploader.upload_from_share_folders(directory_names=data_names, project_id=project_id, share_path=share_path)
 
 
 def main(args_path: str | Path):
@@ -55,7 +59,7 @@ def main(args_path: str | Path):
     share_path = args["share_path"]
     path_to_data_names = args["path_to_data_names"]
 
-    download_process(
+    process_of_upload(
         cvat_credentials_path=cvat_credentials_path,
         project_id=project_id,
         share_path=share_path,

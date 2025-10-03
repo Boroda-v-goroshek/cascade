@@ -216,6 +216,11 @@ class CvatUploader(CvatCore):
                 print(f"\nStart job with directory: {dir_name}")
                 print("-" * 40)
 
+                # Check if directory already exists in CVAT
+                if self._is_task_exists(session, dir_name, project_id):
+                    print(f"⚠ Task '{dir_name}' already exists in project {project_id}. Skipping...")
+                    continue
+
                 full_share_path = f"{share_path}/{dir_name}"
 
                 try:
@@ -228,7 +233,7 @@ class CvatUploader(CvatCore):
 
                     if create_response.status_code not in [200, 201]:
                         print(f"❌ Create task error: {create_response.text}")
-                        return
+                        continue  # Continue with next directory instead of returning
 
                     task_data = create_response.json()
                     task_id = task_data["id"]
@@ -273,6 +278,53 @@ class CvatUploader(CvatCore):
         
         finally:
             session.close()
+
+    def _is_task_exists(self, session: requests.Session, task_name: str, project_id: int) -> bool:
+        """
+        Check if task with given name already exists in the project.
+
+        Parameters
+        ----------
+        session : requests.Session
+            Active session
+        task_name : str
+            Name of the task to check
+        project_id : int
+            ID of the project to check in
+
+        Returns
+        -------
+        bool
+            True if task exists, False otherwise
+        """
+        try:
+            # Get all tasks in the project
+            tasks_response = session.get(
+                f"{self.base_url}/api/tasks?project_id={project_id}",
+                timeout=30
+            )
+
+            if tasks_response.status_code == 200:
+                tasks_data = tasks_response.json()
+                
+                # Check both 'results' format and direct list format
+                if isinstance(tasks_data, dict) and 'results' in tasks_data:
+                    tasks_list = tasks_data['results']
+                elif isinstance(tasks_data, list):
+                    tasks_list = tasks_data
+                else:
+                    tasks_list = []
+                
+                # Check if task with same name exists
+                for task in tasks_list:
+                    if task.get('name') == task_name:
+                        return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"⚠ Error checking if task exists: {e}")
+            return False  # If we can't check, assume it doesn't exist and proceed
 
     def _cleanup_task(self, session: requests.Session, task_id: int, reason: str):
         """

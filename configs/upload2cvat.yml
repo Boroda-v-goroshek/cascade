@@ -5,5 +5,5 @@ project_id: 9
 # path to root dir in /mnt/cvat_share
 share_path: shestakov/test_data
 
-# path to txt-file with directory names
+# path to txt-file with directory names (if is empty, you will upload all directories in share_path)
 path_to_data_names:
