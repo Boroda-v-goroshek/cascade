@@ -14,7 +14,7 @@ SCOPES = [
 
 
 class TableEditor():
-    def __init__(self, url, credentials_file):
+    def __init__(self, url: str, credentials_file: str):
         self.creds = Credentials.from_service_account_file(credentials_file, scopes=SCOPES)
         self.gc = gspread.authorize(self.creds)
         self.sheet = self.gc.open_by_url(url)
@@ -44,7 +44,7 @@ class TableEditor():
             return pd.DataFrame()
 
 
-    def append_to_end(self, data: pd.DataFrame | list, worksheet_name: int=0, include_headers: bool=False):
+    def append_to_end(self, data: pd.DataFrame | list, worksheet_name: int=0):
         """Append data into the end of table.
         
         Parameters
@@ -53,16 +53,11 @@ class TableEditor():
             Pandas dataframe or list of lists
         worksheet_name: int
             Index of sheet
-        include_headers: bool
-            Include headers or not
         """
         worksheet = self.sheet.get_worksheet(worksheet_name)
         
         if isinstance(data, pd.DataFrame):
-            if include_headers:
-                values = [data.columns.tolist()] + data.values.tolist()
-            else:
-                values = data.values.tolist()
+            values = data.values.tolist()
         else:
             values = data
         

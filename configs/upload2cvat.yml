@@ -7,3 +7,11 @@ share_path: shestakov/test_data
 
 # path to txt-file with directory names (if is empty, you will upload all directories in share_path)
 path_to_data_names:
+
+table_url: https://docs.google.com/spreadsheets/d/1qVdDsfiTCZKMDyQsFrWhE4tmJVCuIoZ0CIWw05UCaRw/edit?gid=514709575#gid=514709575
+sheet_id: 1
+table_credentials_path: private/credentials.json
+column_names: [
+  "Ссылка на джобу",
+  "Кол-во картинок"
+]

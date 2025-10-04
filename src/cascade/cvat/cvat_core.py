@@ -3,6 +3,9 @@ from typing import Optional
 
 import requests
 import yaml
+import pandas as pd
+
+from src.cascade.tables.table import TableEditor
 
 
 class CvatCore:
@@ -167,22 +170,75 @@ class CvatCore:
 
 
 class CvatUploader(CvatCore):
-    def __init__(self, credentials_path: str):
+    def __init__(self, cvat_credentials_path: str, table_url: str | None = None, table_credentials_path: str | None = None):
         """
         CVAT uploader class for uploading data to CVAT.
 
         Parameters
         ----------
-        credentials_path : str
+        cvat_credentials_path : str
             Path to YAML file with CVAT credentials
+        table_url: str | None
+            Url of google table
+        table_credentials_path: str | None
+            Private data for work with table
+
         """
-        super().__init__(credentials_path)
+        super().__init__(cvat_credentials_path)
+
+        self.table_editor = None
+        if table_url is not None and table_credentials_path is not None:
+            self.table_editor = TableEditor(table_url, table_credentials_path)
+
+
+    def write_data_to_table(self, data_dict: dict, worksheet_name: int = 0):
+        """
+        Add data to table for target columns.
+        
+        Parameters
+        ----------
+        data_dict : dict
+            Example: {'column name': 'value', ...}
+        worksheet_name : int
+            Sheet id in target table
+        """
+        worksheet = self.table_editor.sheet.get_worksheet(worksheet_name)
+        
+        try:
+            all_data = worksheet.get_all_values()
+            
+            if not all_data:
+                raise ValueError("Table is empty!")
+            
+            headers = all_data[0]
+            
+            new_row = [""] * len(headers)
+            
+            for column_name, value in data_dict.items():
+                if column_name in headers:
+                    column_index = headers.index(column_name)
+                    new_row[column_index] = str(value) if value is not None else ""
+                else:
+                    print(f"⚠️ Column'{column_name}' does not find! Excists columns: {headers}")
+            
+            worksheet.append_row(new_row)
+            
+            print(f"✅ Succes added data:")
+            for column_name, value in data_dict.items():
+                if column_name in headers:
+                    print(f"   📌 {column_name}: {value}")
+            
+        except Exception as e:
+            print(f"❌ Add data error: {e}")
+
 
     def upload_from_share_folders(
         self, 
         project_id: int, 
-        share_path: str, 
-        directory_names: Optional[list[str]] = None
+        share_path: str,
+        directory_names: list[str] | None = None,
+        column_names: list[str] | None = None,
+        sheet_id: int | None = None
     ):
         """
         Upload data from share to CVAT.
@@ -195,6 +251,10 @@ class CvatUploader(CvatCore):
             Path to data on CVAT share
         directory_names : Optional[list[str]], optional
             List of directory names to upload. If None, upload all directories, by default None
+        column_names: list[str] | None
+            Names of target columns in table
+        sheet_id: int | None
+            Id of sheet in target table
         """
         session = self._create_session()
 
@@ -216,7 +276,6 @@ class CvatUploader(CvatCore):
                 print(f"\nStart job with directory: {dir_name}")
                 print("-" * 40)
 
-                # Check if directory already exists in CVAT
                 if self._is_task_exists(session, dir_name, project_id):
                     print(f"⚠ Task '{dir_name}' already exists in project {project_id}. Skipping...")
                     continue
@@ -233,10 +292,12 @@ class CvatUploader(CvatCore):
 
                     if create_response.status_code not in [200, 201]:
                         print(f"❌ Create task error: {create_response.text}")
-                        continue  # Continue with next directory instead of returning
+                        continue
 
                     task_data = create_response.json()
+
                     task_id = task_data["id"]
+
                     print(f"Task is created: {dir_name} (ID: {task_id})...✅")
 
                     share_data = {
@@ -261,6 +322,24 @@ class CvatUploader(CvatCore):
                         task_status = self.wait_for_load_completion(session=session, task_id=task_id)
 
                         if task_status == "Finished":
+
+                            if self.table_editor is not None:
+
+                                task_info_response = session.get(f"{self.base_url}/api/tasks/{task_id}")
+                                if task_info_response.status_code == 200:
+                                    task_info = task_info_response.json()
+                                    
+                                    task_url = f"{self.base_url}/tasks/{task_id}"
+                                    image_count = task_info.get("size", 0)
+
+                                    data_dict = dict(zip(column_names, [task_url, image_count]))
+                                    
+                                    print(f"   📊 Task Info:")
+                                    print(f"   URL: {task_url}")
+                                    print(f"   Images: {image_count}")
+
+                                    self.write_data_to_table(data_dict=data_dict, worksheet_name=sheet_id)
+
                             print(f"{dir_name} - Success...✅")
                         else:
                             self._cleanup_task(session, task_id, f"Upload failed: {task_status}")
@@ -298,7 +377,6 @@ class CvatUploader(CvatCore):
             True if task exists, False otherwise
         """
         try:
-            # Get all tasks in the project
             tasks_response = session.get(
                 f"{self.base_url}/api/tasks?project_id={project_id}",
                 timeout=30
@@ -307,7 +385,6 @@ class CvatUploader(CvatCore):
             if tasks_response.status_code == 200:
                 tasks_data = tasks_response.json()
                 
-                # Check both 'results' format and direct list format
                 if isinstance(tasks_data, dict) and 'results' in tasks_data:
                     tasks_list = tasks_data['results']
                 elif isinstance(tasks_data, list):
@@ -315,7 +392,6 @@ class CvatUploader(CvatCore):
                 else:
                     tasks_list = []
                 
-                # Check if task with same name exists
                 for task in tasks_list:
                     if task.get('name') == task_name:
                         return True
@@ -324,7 +400,7 @@ class CvatUploader(CvatCore):
             
         except Exception as e:
             print(f"⚠ Error checking if task exists: {e}")
-            return False  # If we can't check, assume it doesn't exist and proceed
+            return False
 
     def _cleanup_task(self, session: requests.Session, task_id: int, reason: str):
         """
