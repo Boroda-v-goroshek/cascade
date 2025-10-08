@@ -7,6 +7,8 @@ import pandas as pd
 
 from src.cascade.tables.table import TableEditor
 
+NAME_OF_DATE_COLUMN = "Целевая дата выплаты"
+
 
 def get_archive_names_for_numbers(archive_number_in_names: list[str], path_to_archives: str) -> list[str]:
     if not os.path.exists(path_to_archives):

@@ -20,8 +20,11 @@ def get_data_names(path_data_names: str | Path | None) -> list[str] | None:
         Names list
     """
     if path_data_names is not None:
-        with open(path_data_names, "r", encoding='utf-8') as file:
-            return file.readlines()
+        try:
+            with open(path_data_names, "r", encoding='utf-8') as file:
+                return file.readlines()
+        except Exception as e:
+            raise e
     
     return None
 

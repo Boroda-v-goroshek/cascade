@@ -1,11 +1,23 @@
 import time
-from typing import Optional
+from typing import Optional, Any
+from pathlib import Path
 
 import requests
 import yaml
 import pandas as pd
+import json
+from dataclasses import dataclass
 
 from src.cascade.tables.table import TableEditor
+
+
+@dataclass
+class DownloadResult:
+    """Result of download operation."""
+    success: bool
+    file_path: Optional[str] = None
+    is_error: bool = False
+    error_message: Optional[str] = None
 
 
 class CvatCore:
@@ -273,6 +285,8 @@ class CvatUploader(CvatCore):
             print(f"Processing {len(directories)} directories...")
 
             for dir_name in directories:
+                if dir_name[-1] == '\n':
+                    dir_name = dir_name[:-1]
                 print(f"\nStart job with directory: {dir_name}")
                 print("-" * 40)
 
@@ -420,3 +434,364 @@ class CvatUploader(CvatCore):
             print(f"Task {task_id} has been deleted ({reason})")
         except Exception as e:
             print(f"Warning: Could not delete task {task_id}: {e}")
+
+
+class CvatDownloader(CvatCore):
+    def __init__(self, cvat_credentials_path: str, table_url: str | None = None, table_credentials_path: str | None = None):
+        """
+            Parameters
+        ----------
+        cvat_credentials_path : str
+            Path to YAML file with CVAT credentials
+        table_url: str | None
+            Url of google table
+        table_credentials_path: str | None
+            Private data for work with table
+        """
+        super().__init__(cvat_credentials_path)
+
+        self.table_editor = None
+        if table_url is not None and table_credentials_path is not None:
+            self.table_editor = TableEditor(table_url, table_credentials_path)
+
+    def export_tasks(
+    self,
+    project_id: int,
+    export_format: str,
+    task_ids: Optional[list[int]],
+    output_dir: str,
+    include_images: bool = True
+    ) -> dict[str, Any]:
+        """
+        Export tasks from CVAT project.
+
+        Parameters
+        ----------
+        project_id : int
+            ID of the project to export from
+        export_format : str
+            Export format (YOLO 1.1, COCO 1.0, VOC 1.1, etc.)
+        task_ids : Optional[list[int]]
+            List of specific task IDs to export. If None, export all tasks
+        output_dir : str
+            Local directory to save exported files
+        include_images : bool, optional
+            Whether to include images in export, by default True
+
+        Returns
+        -------
+        dict[str, Any]
+            Export results with file paths and statuses
+        """
+        session = self._create_session()
+        Path(output_dir).mkdir(exist_ok=True)
+        
+        print("Starting CVAT export...")
+        print("=" * 60)
+        
+        tasks_to_export = self._get_tasks_for_export(session, project_id, task_ids)
+        
+        if not tasks_to_export:
+            print("❌ No tasks found to export")
+            return {}
+        
+        print(f"Found {len(tasks_to_export)} tasks to export")
+        
+        results = {}
+        
+        for task in tasks_to_export:
+            task_id = task['id']
+            task_name = task['name']
+            
+            print(f"\nExporting: {task_name} (ID: {task_id})")
+            
+            try:
+                local_path = self._start_export(
+                    session=session,
+                    task_id=task_id,
+                    task_name=task_name,
+                    output_dir=output_dir,
+                    export_format=export_format,
+                    include_images=include_images
+                )
+                
+                if local_path:
+                    results[task_id] = {
+                        "status": "success",
+                        "task_name": task_name,
+                        "local_path": local_path
+                    }
+                    print(f"✅ Success: {local_path}")
+                else:
+                    results[task_id] = {
+                        "status": "failed", 
+                        "task_name": task_name,
+                        "error": "Export failed"
+                    }
+                    print(f"❌ Export failed for {task_name}")
+                    
+            except Exception as e:
+                results[task_id] = {
+                    "status": "error",
+                    "task_name": task_name, 
+                    "error": str(e)
+                }
+                print(f"❌ Error exporting {task_name}: {e}")
+        
+        print(f"\nExport completed: {len([r for r in results.values() if r['status'] == 'success'])}/{len(results)} successful")
+        return results
+
+    def _get_tasks_for_export(
+        self,
+        session: requests.Session, 
+        project_id: int, 
+        task_ids: Optional[list[int]] = None
+    ) -> list[dict]:
+        """
+        Get list of tasks to export.
+        
+        Parameters
+        ----------
+        session : requests.Session
+            Authenticated session
+        project_id : int
+            ID of the project
+        task_ids : Optional[list[int]]
+            List of specific task IDs to export
+        
+        Returns
+        -------
+        list[dict]
+            List of task dictionaries
+        """
+        all_tasks = self._get_all_tasks(session, project_id)
+        
+        if task_ids is None:
+            return all_tasks
+        else:
+            return [task for task in all_tasks if int(task['id']) in task_ids]
+
+    def _get_all_tasks(self, session: requests.Session, project_id: int) -> list[dict]:
+        """
+        Get all tasks from project with pagination.
+        
+        Parameters
+        ----------
+        session : requests.Session
+            Authenticated session
+        project_id : int
+            ID of the project
+        
+        Returns
+        -------
+        list[dict]
+            List of all task dictionaries
+        """
+        all_tasks = []
+        page = 1
+        
+        while True:
+            response = session.get(
+                f"{self.base_url}/api/tasks",
+                params={"project_id": project_id, "page": page, "page_size": 100}
+            )
+            
+            if response.status_code != 200:
+                break
+                
+            data = response.json()
+            
+            if isinstance(data, dict) and 'results' in data:
+                tasks = data['results']
+                all_tasks.extend(tasks)
+                
+                if not data.get('next'):
+                    break
+            elif isinstance(data, list):
+                all_tasks.extend(data)
+                break
+            else:
+                break
+                
+            page += 1
+            
+        return all_tasks
+
+    def _start_export(
+        self,
+        session: requests.Session,
+        task_id: int,
+        task_name: str,
+        output_dir: str,
+        export_format: str,
+        include_images: bool = True
+    ) -> Optional[str]:
+        """
+        Start export process and download the file.
+        
+        Parameters
+        ----------
+        session : requests.Session
+            Authenticated session
+        task_id : int
+            ID of the task to export
+        task_name : str
+            Name of the task
+        output_dir : str
+            Local directory to save exported file
+        export_format : str
+            Export format
+        include_images : bool, optional
+            Whether to include images, by default True
+        
+        Returns
+        -------
+        Optional[str]
+            Local path to downloaded file or None if failed
+        """
+        export_params = {
+            "format": export_format,
+            "filename": f"task_{task_id}_export",
+        }
+        
+        if not include_images:
+            export_params["image_quality"] = 0
+            
+        print(f"   Starting export...")
+        export_response = session.get(
+            f"{self.base_url}/api/tasks/{task_id}/annotations",
+            params=export_params
+        )
+        
+        print(f"   Export init: {export_response.status_code}")
+        
+        if export_response.status_code in [201, 202]:
+            return self._wait_for_export_ready(
+                session=session,
+                task_id=task_id,
+                task_name=task_name,
+                export_format=export_format,
+                output_dir=output_dir
+            )
+        else:
+            print(f"   ❌ Export init failed: {export_response.text}")
+            return None
+
+    def _wait_for_export_ready(
+    self, 
+    session: requests.Session, 
+    task_id: int,
+    task_name: str,
+    export_format: str,
+    output_dir: str,
+    max_wait: int = 300
+    ) -> Optional[str]:
+        """
+        Wait for export to be ready and download the file.
+        
+        Parameters
+        ----------
+        session : requests.Session
+            Authenticated session
+        task_id : int
+            ID of the task
+        task_name : str
+            Name of the task
+        export_format : str
+            Export format
+        output_dir : str
+            Local directory to save file
+        max_wait : int, optional
+            Maximum wait time in seconds, by default 300
+        
+        Returns
+        -------
+        Optional[str]
+            Local path to downloaded file or None if failed
+        """
+        print(f"   Waiting for export ({max_wait}s max)...")
+        
+        for i in range(max_wait // 10):
+            time.sleep(10)
+            
+            download_result = self._download_export_file(
+                session=session,
+                task_id=task_id,
+                task_name=task_name,
+                export_format=export_format,
+                output_dir=output_dir
+            )
+            
+            if download_result.success:
+                print(f"      ✅ Export completed and downloaded!")
+                return download_result.file_path
+            elif download_result.is_error:
+                print(f"      ❌ Download error: {download_result.error_message}")
+                return None
+            else:
+                print(f"      Download check {i+1}: file not ready yet")
+        
+        print(f"      ⚠ Export timeout after {max_wait}s")
+        return None
+
+    def _download_export_file(
+        self,
+        session: requests.Session,
+        task_id: int,
+        task_name: str,
+        export_format: str,
+        output_dir: str
+    ) -> DownloadResult:
+        """
+        Download exported file to local directory.
+        
+        Parameters
+        ----------
+        session : requests.Session
+            Authenticated session
+        task_id : int
+            ID of the task
+        task_name : str
+            Name of the task
+        export_format : str
+            Export format
+        output_dir : str
+            Local directory to save file
+        
+        Returns
+        -------
+        DownloadResult
+            Result object with status and file path
+        """
+        download_response = session.get(
+            f"{self.base_url}/api/tasks/{task_id}/annotations", 
+            params={
+                "format": export_format,
+                "action": "download"
+            }
+        )
+        
+        if download_response.status_code == 200:
+            content_type = download_response.headers.get('content-type', '')
+            
+            if 'application/zip' in content_type or 'octet-stream' in content_type:
+                safe_task_name = "".join(c for c in task_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                filename = f"{safe_task_name}.zip"
+                local_path = Path(output_dir) / filename
+
+                with open(local_path, 'wb') as f:
+                    f.write(download_response.content)
+                
+                file_size = local_path.stat().st_size
+                print(f"      ✅ File saved: {local_path.name} ({file_size / 1024 / 1024:.1f} MB)")
+                return DownloadResult(success=True, file_path=str(local_path))
+            else:
+                error_msg = f"Unexpected content type: {content_type}"
+                print(f"      ❌ {error_msg}")
+                return DownloadResult(success=False, is_error=True, error_message=error_msg)
+        elif download_response.status_code == 202:
+            return DownloadResult(success=False, is_error=False)
+        else:
+            error_msg = f"Download failed with status: {download_response.status_code}"
+            print(f"      ❌ {error_msg}")
+            return DownloadResult(success=False, is_error=True, error_message=error_msg)

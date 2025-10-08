@@ -1,0 +1,16 @@
+# path to user-data for CVAT
+cvat_credentials_path: private/cvat.yml
+
+# path to txt-file with tasks ids (first, we will parse table and save results in this path)
+path_to_tasks_ids: data/tasks_ids.txt
+
+export_format: YOLO 1.1
+
+output_dir: /ENOT22/gsn/labeling/exports
+
+include_images:
+
+table_url: https://docs.google.com/spreadsheets/d/15bKXNUphGce9wvCLj0upnaHOG4Fuu25FzoUVlw12OWQ/edit?usp=sharing
+table_credentials_path: private/credentials.json
+
+date: 10.10.2025

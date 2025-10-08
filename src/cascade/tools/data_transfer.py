@@ -22,8 +22,8 @@ class DataTransfer:
         except json.JSONDecodeError as e:
             raise ValueError(f"Ошибка парсинга JSON: {e}")
     
-    def transfer_data(self, local_path: str, remote_path: str, server_name: str, mode: str, username: str):
-        """Copy data for scp.
+    def transfer_data(self, local_path: str | Path, remote_path: str | Path, server_name: str, username: str, mode: str = "copy"):
+        """Copy data with scp.
         
         Parameters
         ----------

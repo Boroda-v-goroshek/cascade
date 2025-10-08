@@ -1,0 +1,17 @@
+# path to user-data for CVAT
+cvat_credentials_path: private/cvat.yml
+project_id: 35
+
+# path to txt-file with tasks ids (if is empty, you will download all tasks)
+path_to_tasks_ids: data/tasks_ids.txt
+
+export_format: YOLO 1.1
+
+output_dir: ./exports
+
+include_images:
+
+table_url:
+sheet_id:
+table_credentials_path:
+column_names:
