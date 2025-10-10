@@ -1,6 +1,8 @@
 import time
 from typing import Optional, Any
 from pathlib import Path
+import tempfile
+import zipfile
 
 import requests
 import yaml
@@ -203,47 +205,6 @@ class CvatUploader(CvatCore):
             self.table_editor = TableEditor(table_url, table_credentials_path)
 
 
-    def write_data_to_table(self, data_dict: dict, worksheet_name: int = 0):
-        """
-        Add data to table for target columns.
-        
-        Parameters
-        ----------
-        data_dict : dict
-            Example: {'column name': 'value', ...}
-        worksheet_name : int
-            Sheet id in target table
-        """
-        worksheet = self.table_editor.sheet.get_worksheet(worksheet_name)
-        
-        try:
-            all_data = worksheet.get_all_values()
-            
-            if not all_data:
-                raise ValueError("Table is empty!")
-            
-            headers = all_data[0]
-            
-            new_row = [""] * len(headers)
-            
-            for column_name, value in data_dict.items():
-                if column_name in headers:
-                    column_index = headers.index(column_name)
-                    new_row[column_index] = str(value) if value is not None else ""
-                else:
-                    print(f"⚠️ Column'{column_name}' does not find! Excists columns: {headers}")
-            
-            worksheet.append_row(new_row)
-            
-            print(f"✅ Succes added data:")
-            for column_name, value in data_dict.items():
-                if column_name in headers:
-                    print(f"   📌 {column_name}: {value}")
-            
-        except Exception as e:
-            print(f"❌ Add data error: {e}")
-
-
     def upload_from_share_folders(
         self, 
         project_id: int, 
@@ -352,7 +313,7 @@ class CvatUploader(CvatCore):
                                     print(f"   URL: {task_url}")
                                     print(f"   Images: {image_count}")
 
-                                    self.write_data_to_table(data_dict=data_dict, worksheet_name=sheet_id)
+                                    self.table_editor.write_data_to_table(data_dict=data_dict, worksheet_name=sheet_id)
 
                             print(f"{dir_name} - Success...✅")
                         else:
@@ -484,7 +445,7 @@ class CvatDownloader(CvatCore):
             Export results with file paths and statuses
         """
         session = self._create_session()
-        Path(output_dir).mkdir(exist_ok=True)
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
         
         print("Starting CVAT export...")
         print("=" * 60)
@@ -494,6 +455,8 @@ class CvatDownloader(CvatCore):
         if not tasks_to_export:
             print("❌ No tasks found to export")
             return {}
+
+        self._cleanup_existing_exports(output_dir, tasks_to_export)
         
         print(f"Found {len(tasks_to_export)} tasks to export")
         
@@ -740,7 +703,8 @@ class CvatDownloader(CvatCore):
         task_id: int,
         task_name: str,
         export_format: str,
-        output_dir: str
+        output_dir: str,
+        extract_archive: bool = True
     ) -> DownloadResult:
         """
         Download exported file to local directory.
@@ -757,6 +721,8 @@ class CvatDownloader(CvatCore):
             Export format
         output_dir : str
             Local directory to save file
+        extract_archive : bool, optional
+            Whether to extract ZIP archive after download, by default True
         
         Returns
         -------
@@ -776,15 +742,44 @@ class CvatDownloader(CvatCore):
             
             if 'application/zip' in content_type or 'octet-stream' in content_type:
                 safe_task_name = "".join(c for c in task_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-                filename = f"{safe_task_name}.zip"
-                local_path = Path(output_dir) / filename
-
-                with open(local_path, 'wb') as f:
-                    f.write(download_response.content)
                 
-                file_size = local_path.stat().st_size
-                print(f"      ✅ File saved: {local_path.name} ({file_size / 1024 / 1024:.1f} MB)")
-                return DownloadResult(success=True, file_path=str(local_path))
+                if extract_archive:
+                    extract_dir = Path(output_dir) / safe_task_name
+                    extract_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp_file:
+                        tmp_file.write(download_response.content)
+                        temp_zip_path = tmp_file.name
+                    
+                    try:
+                        with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                            zip_ref.extractall(extract_dir)
+                        
+                        Path(temp_zip_path).unlink()
+                        
+                        print(f"      ✅ Extracted to directory: {extract_dir}")
+                        return DownloadResult(success=True, file_path=str(extract_dir))
+                        
+                    except Exception as e:
+                        error_msg = f"Extraction failed, saving as ZIP: {e}"
+                        print(f"      ⚠ {error_msg}")
+                        
+                        zip_path = Path(output_dir) / f"{safe_task_name}.zip"
+                        with open(zip_path, 'wb') as f:
+                            f.write(download_response.content)
+                        
+                        file_size = zip_path.stat().st_size
+                        print(f"      ✅ ZIP saved: {zip_path.name} ({file_size / 1024:.1f} KB)")
+                        return DownloadResult(success=True, file_path=str(zip_path))
+                else:
+                    zip_path = Path(output_dir) / f"{safe_task_name}.zip"
+                    with open(zip_path, 'wb') as f:
+                        f.write(download_response.content)
+                    
+                    file_size = zip_path.stat().st_size
+                    print(f"      ✅ ZIP saved: {zip_path.name} ({file_size / 1024:.1f} KB)")
+                    return DownloadResult(success=True, file_path=str(zip_path))
+                    
             else:
                 error_msg = f"Unexpected content type: {content_type}"
                 print(f"      ❌ {error_msg}")
@@ -795,3 +790,37 @@ class CvatDownloader(CvatCore):
             error_msg = f"Download failed with status: {download_response.status_code}"
             print(f"      ❌ {error_msg}")
             return DownloadResult(success=False, is_error=True, error_message=error_msg)
+
+
+    def _cleanup_existing_exports(self, output_dir: str, tasks: list[dict]):
+        """
+        Remove existing export directories for the given tasks.
+        
+        Parameters
+        ----------
+        output_dir : str
+            Output directory to clean
+        tasks : list[dict]
+            List of tasks to clean up
+        """
+        output_path = Path(output_dir)
+        
+        if not output_path.exists():
+            return
+        
+        print("Cleaning up existing exports...")
+        
+        for task in tasks:
+            task_name = task['name']
+            
+            dir_path = output_path / task_name
+            
+            if dir_path.exists() and dir_path.is_dir():
+                try:
+                    import shutil
+                    shutil.rmtree(dir_path)
+                    print(f"   🗑️ Deleted directory: {dir_path.name}")
+                except Exception as e:
+                    print(f"   ⚠ Could not delete directory {dir_path}: {e}")
+            else:
+                print(f"   ✓ Directory doesn't exist: {dir_path.name}")

@@ -1,0 +1,10 @@
+initial_labels_dir: /path/to/initial/labels/obj_train_data
+final_labels_dir: /path/to/final/labels/obj_train_data
+cost_diff_box: 0.4
+cost_diff_box_increased: 0.6
+cost_new_box: 0.8
+cost_new_box_increased: 1
+box_change_low_threshold: 0.1
+box_change_high_threshold: 0.7
+increased_cost_frame_from: -1
+increased_cost_frame_to: -1

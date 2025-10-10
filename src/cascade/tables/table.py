@@ -18,6 +18,10 @@ class TableEditor():
         self.creds = Credentials.from_service_account_file(credentials_file, scopes=SCOPES)
         self.gc = gspread.authorize(self.creds)
         self.sheet = self.gc.open_by_url(url)
+    
+
+    def get_sheet_count(self) -> int:
+        return len(self.sheet.worksheets())
 
 
     def get_named_table(self, worksheet_name: int = 0) -> pd.DataFrame:
@@ -63,35 +67,43 @@ class TableEditor():
         
         worksheet.append_rows(values)
         print(f"✅ Добавлено {len(values)} строк в конец листа '{worksheet.title}'")
-        
-    def append_to_range(self, data: pd.DataFrame | list, range_str: str, worksheet_name: int = 0):
+
+    def write_data_to_table(self, data_dict: dict, worksheet_name: int = 0):
         """
-        Добавить данные в определенный диапазон
+        Add data to table for target columns.
         
         Parameters
         ----------
-        data: DataFrame | list
-            Данные для записи (должны соответствовать размеру диапазона)
-        range_str: str
-            Диапазон в формате 'A1:B10', 'G2:G197' и т.д.
-        worksheet_name: int
-            Индекс листа
+        data_dict : dict
+            Example: {'column name': 'value', ...}
+        worksheet_name : int
+            Sheet id in target table
         """
         worksheet = self.sheet.get_worksheet(worksheet_name)
         
         try:
-            if isinstance(data, pd.DataFrame):
-                values = data.values.tolist()
-            else:
-                values = data
+            all_data = worksheet.get_all_values()
             
-            if values and not isinstance(values[0], list):
-                values = [[item] for item in values]
+            if not all_data:
+                raise ValueError("Table is empty!")
             
-            worksheet.update(range_str, values)
+            headers = all_data[0]
             
-            print(f"✅ Данные записаны в диапазон '{range_str}' на листе '{worksheet.title}'")
-            print(f"📊 Записано {len(values)} значений")
+            new_row = [""] * len(headers)
+            
+            for column_name, value in data_dict.items():
+                if column_name in headers:
+                    column_index = headers.index(column_name)
+                    new_row[column_index] = str(value) if value is not None else ""
+                else:
+                    print(f"⚠️ Column'{column_name}' does not find! Excists columns: {headers}")
+            
+            worksheet.append_row(new_row)
+            
+            print(f"✅ Succes added data:")
+            for column_name, value in data_dict.items():
+                if column_name in headers:
+                    print(f"   📌 {column_name}: {value}")
             
         except Exception as e:
-            print(f"❌ Ошибка записи в диапазон: {e}")
+            print(f"❌ Add data error: {e}")

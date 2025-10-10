@@ -1,17 +1,14 @@
 # path to user-data for CVAT
 cvat_credentials_path: private/cvat.yml
-project_id: 35
+project_id: 25
 
 # path to root dir in /mnt/cvat_share
-share_path: shestakov/data_for_cvat
+share_path: building_machines_orlovka_25
 
 # path to txt-file with directory names (if is empty, you will upload all directories in share_path)
 path_to_data_names: data/data_names.txt
 
-table_url: https://docs.google.com/spreadsheets/d/15bKXNUphGce9wvCLj0upnaHOG4Fuu25FzoUVlw12OWQ/edit?usp=sharing
-sheet_id: 1
-table_credentials_path: private/credentials.json
-column_names: [
-  "Ссылка на джобу",
-  "Кол-во картинок"
-]
+table_url:
+sheet_id:
+table_credentials_path:
+column_names:
